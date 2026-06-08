@@ -7,3 +7,4 @@ Current bins:
 - `mysql`
 - `mysqldump`
 - `curl`
+- `openstack`
