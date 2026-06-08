@@ -5,4 +5,5 @@ schema-version = "0.2"
 install = [
     "curl",
     "mariadb-client",
+    "python3-openstackclient",
 ]
