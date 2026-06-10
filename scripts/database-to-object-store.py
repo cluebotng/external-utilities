@@ -26,9 +26,7 @@ def get_args():
         "--openstack-application-secret",
         default=os.environ.get("TOOL_BACKUP_OS_SECRET"),
     )
-    parser.add_argument(
-        "--openstack-bucket", default=os.environ.get("TOOL_BACKUP_OS_BUCKET")
-    )
+    parser.add_argument("--openstack-bucket", default=os.environ.get("TOOL_BACKUP_OS_BUCKET"))
     return parser.parse_args()
 
 
