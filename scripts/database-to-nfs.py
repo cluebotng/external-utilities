@@ -77,9 +77,7 @@ def main():
     target_directory.mkdir(parents=True, exist_ok=True)
     target_directory.chmod(0o750)
 
-    target_path = (
-        target_directory / f'{datetime.now(UTC).strftime("%Y%m%dT%H%M%S")}.sql.gz'
-    )
+    target_path = target_directory / f'{datetime.now(UTC).strftime("%Y%m%dT%H%M%S")}.sql.gz'
     print(f"Exporting database to {target_path}")
     export_database(
         args.mysql_host,
