@@ -2,14 +2,15 @@
 import os
 import sys
 import argparse
+import hashlib
 import subprocess
 import tempfile
 from datetime import datetime, UTC
 from pathlib import PosixPath
 import openstack
 
-SEGMENT_SIZE = 512 * 1024 * 1024
-DELETE_AFTER = 3 * 24 * 60 * 60
+SEGMENT_SIZE = 100 * 1024 * 1024
+DELETE_BACKUP_AFTER = 3 * 24 * 60 * 60
 
 
 def get_args():
@@ -27,26 +28,56 @@ def get_args():
         default=os.environ.get("TOOL_BACKUP_OS_SECRET"),
     )
     parser.add_argument("--openstack-bucket", default=os.environ.get("TOOL_BACKUP_OS_BUCKET"))
+    parser.add_argument("--dump-per-table", default=True, action="store")
     return parser.parse_args()
 
 
-def export_database(
+def _get_database_tables(
     mysql_host: str,
     mysql_user: str,
     mysql_password: str,
     mysql_schema: str,
+) -> list[str]:
+    p = subprocess.Popen(
+        [
+            "mysql",
+            f"--host={mysql_host}",
+            f"--user={mysql_user}",
+            "--disable-ssl",
+            "-A",
+            mysql_schema,
+            "-e",
+            "show tables",
+            "-N",
+        ],
+        stdout=subprocess.PIPE,
+        env={**os.environ, "MYSQL_PWD": mysql_password},
+    )
+    return [line.strip() for line in p.stdout.read().decode("utf-8").splitlines()]
+
+
+def _export_database_tables(
+    mysql_host: str,
+    mysql_user: str,
+    mysql_password: str,
+    mysql_schema: str,
+    mysql_table: str | None,
     target_path: PosixPath,
 ):
+    mysqldump_args = [
+        "mysqldump",
+        f"--host={mysql_host}",
+        f"--user={mysql_user}",
+        "--disable-ssl",
+        mysql_schema,
+    ]
+    if mysql_table:
+        mysqldump_args.append(mysql_table)
+
     fd = os.open(target_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o640)
     with open(fd, "wb") as fh:
         mysqldump = subprocess.Popen(
-            [
-                "mysqldump",
-                f"--host={mysql_host}",
-                f"--user={mysql_user}",
-                "--disable-ssl",
-                mysql_schema,
-            ],
+            mysqldump_args,
             stdout=subprocess.PIPE,
             env={**os.environ, "MYSQL_PWD": mysql_password},
         )
@@ -64,7 +95,7 @@ def export_database(
         sys.exit(1)
 
 
-def upload_file(
+def _upload_file(
     source_path: PosixPath,
     container_name: str,
     target_name: str,
@@ -78,33 +109,26 @@ def upload_file(
         application_credential_secret=openstack_application_secret,
     )
 
+    segment_prefix = f"{target_name.split('/')[0]}/segments" if "/" in target_name else f"segments/{target_name}"
     segments = []
     with source_path.open("rb") as fh:
-        i = 0
         while chunk := fh.read(SEGMENT_SIZE):
-            print(f"  Uploading segment {i} ({len(chunk) / 1024 / 1024:.0f} MiB)")
-            segment_name = f"{target_name}/{i:06d}"
             obj = conn.object_store.upload_object(
                 container=container_name,
-                name=segment_name,
+                name=f"{segment_prefix}/{hashlib.sha256(chunk).hexdigest()}",
                 data=chunk,
-                delete_after=DELETE_AFTER,
+                headers={"X-Delete-After": f"{DELETE_BACKUP_AFTER}"},
             )
-            segments.append(
-                {
-                    "path": f"/{container_name}/{segment_name}",
-                    "etag": obj.etag,
-                    "size_bytes": len(chunk),
-                }
-            )
-            i += 1
+            segments.append({"path": f"/{container_name}/{obj.name}", "etag": obj.etag, "size_bytes": len(chunk)})
 
-    conn.object_store.put(
+    r = conn.object_store.put(
         f"/{container_name}/{target_name}",
         params={"multipart-manifest": "put"},
         json=segments,
-        headers={"X-Delete-After": str(DELETE_AFTER)},
+        headers={"X-Delete-After": f"{DELETE_BACKUP_AFTER}"},
     )
+    if r.status_code != 201:
+        print(f"Failed to create object for {target_name}: [{r.status_code}] {r.text}")
 
 
 def main():
@@ -123,24 +147,38 @@ def main():
         print("Missing required arguments")
         sys.exit(1)
 
-    target_name = f'{datetime.now(UTC).strftime("%Y%m%dT%H%M%S")}.sql.gz'
-    with tempfile.NamedTemporaryFile(suffix=".sql.gz") as tmp:
-        export_database(
-            args.mysql_host,
-            args.mysql_user,
-            args.mysql_password,
-            args.mysql_schema,
-            PosixPath(tmp.name),
-        )
+    export_name = f'{datetime.now(UTC).strftime("%Y%m%dT%H%M%S")}'
+    target_tables = (
+        _get_database_tables(args.mysql_host, args.mysql_user, args.mysql_password, args.mysql_schema)
+        if args.dump_per_table
+        else [None]
+    )
 
-        print(f"Uploading {target_name} to {args.openstack_bucket}")
-        upload_file(
-            PosixPath(tmp.name),
-            args.openstack_bucket,
-            target_name,
-            args.openstack_application_credential,
-            args.openstack_application_secret,
-        )
+    for table in target_tables:
+        target_name = f"{export_name}/{table}.sql.gz" if table else f"{export_name}.sql.gz"
+        with tempfile.NamedTemporaryFile(suffix=".sql.gz") as tmp:
+            if table:
+                print(f"Exporting database table {table} to {tmp.name}")
+            else:
+                print(f"Exporting database schema {args.mysql_schema} to {tmp.name}")
+
+            _export_database_tables(
+                args.mysql_host,
+                args.mysql_user,
+                args.mysql_password,
+                args.mysql_schema,
+                table,
+                PosixPath(tmp.name),
+            )
+
+            print(f"Uploading {target_name} to {args.openstack_bucket}")
+            _upload_file(
+                PosixPath(tmp.name),
+                args.openstack_bucket,
+                target_name,
+                args.openstack_application_credential,
+                args.openstack_application_secret,
+            )
 
 
 if __name__ == "__main__":
