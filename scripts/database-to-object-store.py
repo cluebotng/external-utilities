@@ -109,30 +109,37 @@ def _upload_file(
         application_credential_secret=openstack_application_secret,
     )
 
-    segment_prefix = f"segments/{target_name}"
-    if "/" in target_name:
-        parts = target_name.split("/", 2)
-        segment_prefix = f"{parts[0]}/segments/{parts[1]}"
-
-    segments = []
-    with source_path.open("rb") as fh:
-        while chunk := fh.read(SEGMENT_SIZE):
-            obj = conn.object_store.upload_object(
+    if source_path.stat().st_size <= SEGMENT_SIZE:
+        with source_path.open("rb") as fh:
+            conn.object_store.upload_object(
                 container=container_name,
-                name=f"{segment_prefix}/{hashlib.sha256(chunk).hexdigest()}",
-                data=chunk,
+                name=target_name,
+                data=fh.read(),
                 headers={"X-Delete-After": f"{DELETE_BACKUP_AFTER}"},
             )
-            segments.append({"path": f"/{container_name}/{obj.name}", "etag": obj.etag, "size_bytes": len(chunk)})
+    else:
+        segment_prefix = f"segments/{target_name}"
+        if "/" in target_name:
+            parts = target_name.split("/", 2)
+            segment_prefix = f"{parts[0]}/segments/{parts[1]}"
 
-    r = conn.object_store.put(
-        f"/{container_name}/{target_name}",
-        params={"multipart-manifest": "put"},
-        json=segments,
-        headers={"X-Delete-After": f"{DELETE_BACKUP_AFTER}"},
-    )
-    if r.status_code != 201:
-        print(f"Failed to create object for {target_name}: [{r.status_code}] {r.text}")
+        segments = []
+        with source_path.open("rb") as fh:
+            while chunk := fh.read(SEGMENT_SIZE):
+                obj = conn.object_store.upload_object(
+                    container=container_name,
+                    name=f"{segment_prefix}/{hashlib.sha256(chunk).hexdigest()}",
+                    data=chunk,
+                    headers={"X-Delete-After": f"{DELETE_BACKUP_AFTER}"},
+                )
+                segments.append({"path": f"/{container_name}/{obj.name}", "etag": obj.etag, "size_bytes": len(chunk)})
+
+        conn.object_store.put(
+            f"/{container_name}/{target_name}",
+            params={"multipart-manifest": "put"},
+            json=segments,
+            headers={"X-Delete-After": f"{DELETE_BACKUP_AFTER}"},
+        )
 
 
 def main():
