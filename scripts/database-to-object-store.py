@@ -109,7 +109,11 @@ def _upload_file(
         application_credential_secret=openstack_application_secret,
     )
 
-    segment_prefix = f"{target_name.split('/')[0]}/segments" if "/" in target_name else f"segments/{target_name}"
+    segment_prefix = f"segments/{target_name}"
+    if "/" in target_name:
+        parts = target_name.split("/", 2)
+        segment_prefix = f"{parts[0]}/segments/{parts[1]}"
+
     segments = []
     with source_path.open("rb") as fh:
         while chunk := fh.read(SEGMENT_SIZE):
