@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-import os
-import sys
 import argparse
+import os
 import subprocess
-from datetime import datetime, UTC
+import sys
+from datetime import UTC, datetime
 from pathlib import PosixPath
 
 
