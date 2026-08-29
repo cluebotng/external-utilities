@@ -1,12 +1,13 @@
 #!/usr/bin/env python
-import os
-import sys
 import argparse
 import hashlib
+import os
 import subprocess
+import sys
 import tempfile
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import PosixPath
+
 import openstack
 
 SEGMENT_SIZE = 100 * 1024 * 1024
