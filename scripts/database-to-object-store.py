@@ -29,7 +29,7 @@ def get_args():
         default=os.environ.get("TOOL_BACKUP_OS_SECRET"),
     )
     parser.add_argument("--openstack-bucket", default=os.environ.get("TOOL_BACKUP_OS_BUCKET"))
-    parser.add_argument("--dump-per-table", default=True, action="store")
+    parser.add_argument("--dump-per-table", default=True, action=argparse.BooleanOptionalAction)
     return parser.parse_args()
 
 
