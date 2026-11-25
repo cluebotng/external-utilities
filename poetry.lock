@@ -1331,22 +1331,22 @@ requests = ">=2.14.2"
 
 [[package]]
 name = "python-openstackclient"
-version = "10.5.0"
+version = "10.6.0"
 description = "OpenStack Command-line Client"
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "python_openstackclient-10.5.0-py3-none-any.whl", hash = "sha256:a31f7dfa25650bea045df42f3301677b344f2dd6cf9193d2531fe2725132685b"},
-    {file = "python_openstackclient-10.5.0.tar.gz", hash = "sha256:a9c77b8d2b53a9413794daa5d60cbb4fa669af64799b704cfb96d75f2e002e8e"},
+    {file = "python_openstackclient-10.6.0-py3-none-any.whl", hash = "sha256:1b1f321820fb7a9f94f8119cd80827ab2e55da1afbff2eb8eb50f570d65f3d1c"},
+    {file = "python_openstackclient-10.6.0.tar.gz", hash = "sha256:abca80ab04e40c3045dcedeff55620b58ceb1a5cdb96f437be79f4add64d11b6"},
 ]
 
 [package.dependencies]
-cliff = ">=4.13.0"
+cliff = ">=4.17.0"
 cryptography = ">=2.7"
 iso8601 = ">=0.1.11"
-openstacksdk = ">=4.21.0"
-osc-lib = ">=4.6.0"
+openstacksdk = ">=4.24.0"
+osc-lib = ">=4.7.0"
 "oslo.i18n" = ">=3.15.3"
 python-keystoneclient = ">=3.22.0"
 python-manilaclient = ">=6.0.0"
